@@ -2,7 +2,24 @@
  This plugin extends lazySizes to lazyLoad and/or conditionally load content
  */
 
-(function(window, document){
+(function(window, factory) {
+	var globalInstall = function(){
+		factory(window.lazySizes);
+		window.removeEventListener('lazyunveilread', globalInstall, true);
+	};
+
+	factory = factory.bind(null, window, window.document);
+
+	if(typeof module == 'object' && module.exports){
+		factory(require('lazysizes'));
+	} else if (typeof define == 'function' && define.amd) {
+		define(['lazysizes'], factory);
+	} else if(window.lazySizes) {
+		globalInstall();
+	} else {
+		window.addEventListener('lazyunveilread', globalInstall, true);
+	}
+}(window, function(window, document, lazySizes) {
 	/*jshint eqnull:true */
 	'use strict';
 
@@ -11,6 +28,7 @@
 	}
 	var config, includeConfig, baseContentElement, basePseudos;
 	var regSplitCan = /\s*,+\s+/;
+	var cssComplete = {complete: 1, loaded: 1};
 	var uniqueUrls = {};
 	var regWhite = /\s+/;
 	var regTypes = /^(amd|css|module)\:(.+)/i;
@@ -110,12 +128,7 @@
 		};
 	})();
 
-	config = (window.lazySizes && lazySizes.cfg) || window.lazySizesConfig;
-
-	if(!config){
-		config = {};
-		window.lazySizesConfig = config;
-	}
+	config = lazySizes && lazySizes.cfg;
 
 	if(!config.include){
 		config.include = {};
@@ -137,8 +150,9 @@
 
 	function addUrl(url){
 		/*jshint validthis:true */
-		if(url.match(regTypes)){
-			this.urls[RegExp.$1] = includeConfig.map[RegExp.$2] || RegExp.$2;
+		var match;
+		if((match = url.match(regTypes))){
+			this.urls[match[1]] = includeConfig.map[match[2]] || match[2];
 		} else {
 			this.urls.include = includeConfig.map[url] || url;
 		}
@@ -153,10 +167,10 @@
 		map = input.match(regUrlCan);
 
 		if(map){
-			url = RegExp.$1;
+			url = map[1];
 			output = {
-				condition: config.include.conditions[RegExp.$3] || config.customMedia[RegExp.$3] || RegExp.$2 || null,
-				name: RegExp.$3
+				condition: config.include.conditions[map[3]] || config.customMedia[map[3]] || map[2] || null,
+				name: map[3]
 			};
 		} else {
 			url = input;
@@ -296,7 +310,7 @@
 		request.open.apply(request, detail.openArgs);
 		request.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
 		if(detail.xhrModifier){
-			detail.xhrModifier(request, elem, candidate);
+			detail.xhrModifier(request, detail.candidate);
 		}
 		request.send(detail.sendData);
 	}
@@ -323,6 +337,22 @@
 		}
 	}
 
+	function isStyleReady(link){
+		var ready = false;
+		var sheets = document.styleSheets;
+		var href = link.href;
+
+		for(var i = 0, length = sheets.length; i < length; i++){
+			if(sheets[i].href == href){
+				ready = true;
+				break;
+			}
+		}
+
+
+		return ready;
+	}
+
 	function loadStyleScript(url, isScript, cb){
 		if(!uniqueUrls[url]){
 			var elem = document.createElement(isScript === true ? 'script' : 'link');
@@ -335,15 +365,69 @@
 				elem.rel = 'stylesheet';
 				elem.href = url;
 			}
+
+			uniqueUrls[url] = [];
+			uniqueUrls[elem.href] = uniqueUrls[url];
+
+			if(cb){
+				var timer;
+				var load = function(e){
+					if(e.type == 'readystatechange' && !cssComplete[e.target.readyState]){return;}
+
+					var cbs = uniqueUrls[url];
+
+					elem.removeEventListener('load', load);
+					elem.removeEventListener('error', load);
+					elem.removeEventListener('readystatechange', load);
+					elem.removeEventListener('loadcssdefined', load);
+
+					if(timer){
+						clearInterval(timer);
+					}
+
+					uniqueUrls[url] = true;
+					uniqueUrls[elem.href] = true;
+
+					while(cbs.length){
+						cbs.shift()();
+					}
+				};
+
+				uniqueUrls[elem.href][0] = cb;
+
+				if(!isScript){
+					timer = setInterval(function(){
+						if(isStyleReady(elem)){
+							load({});
+						}
+					}, 60);
+				}
+
+				elem.addEventListener('load', load);
+				elem.addEventListener('error', load);
+				elem.addEventListener('readystatechange', load);
+				elem.addEventListener('loadcssdefined', load);
+
+			}
+
 			insertElem.parentNode.insertBefore(elem, insertElem);
-			uniqueUrls[url] = true;
-			uniqueUrls[elem.href] = true;
+		} else if(cb){
+			if(uniqueUrls[url] === true){
+				setTimeout(cb);
+			} else {
+				uniqueUrls[url].push(cb);
+			}
 		}
 	}
 
-	function loadStyles(urls){
+	function loadStyles(urls, cb){
 		urls = urls.split('|,|');
-		urls.forEach(loadStyleScript);
+
+		var last = urls.length - 1;
+
+		urls.forEach(function(url, index){
+			loadStyleScript(url, false, index == last ? cb : null);
+		});
 	}
 
 	function transformInclude(module){
@@ -368,7 +452,7 @@
 	}
 
 	function loadCandidate(elem, candidate){
-		var include, xhrObj, modules;
+		var include, xhrObj, modules, waitCss, runInclude;
 		var old = elem.lazyInclude.current || null;
 		var detail = {
 			candidate: candidate,
@@ -385,8 +469,14 @@
 			return;
 		}
 
+		runInclude = function(){
+			if(xhrObj && modules && !waitCss){
+				include();
+			}
+		};
+
 		include = function(){
-			var event, loadRequireImportCB;
+			var event;
 			var status = xhrObj.status;
 			var content = xhrObj.content || xhrObj.responseText;
 			var reset = !!(content == null && old && old.urls.include);
@@ -420,11 +510,7 @@
 			event = lazySizes.fire(elem, 'lazyincludeloaded', detail);
 
 			if(detail.insert && detail.isSuccess && !event.defaultPrevented && detail.content != null && detail.content != elem.innerHTML){
-				if(window.jQuery){
-					jQuery(elem).html(detail.content);
-				} else {
-					elem.innerHTML = detail.content;
-				}
+				elem.innerHTML = detail.content;
 			}
 
 			queue.d();
@@ -443,25 +529,25 @@
 		elem.setAttribute('data-currentinclude', candidate.name);
 
 		if(candidate.urls.css){
-			loadStyles(candidate.urls.css);
+			waitCss = true;
+			loadStyles(candidate.urls.css, function () {
+				waitCss = false;
+				runInclude();
+			});
 		}
 		if(detail.content == null && candidate.urls.include){
 			loadInclude(detail, function(data){
 				xhrObj = data;
-				if(modules){
-					include();
-				}
+				runInclude();
 			});
 		} else {
 			xhrObj = detail;
 		}
 
 		if(candidate.urls.amd || candidate.urls.module){
-			loadRequireImportCB = function(){
+			var loadRequireImportCB = function(){
 				modules = Array.prototype.slice.call(arguments);
-				if(xhrObj){
-					include();
-				}
+				runInclude();
 			};
 
 			if(candidate.urls.amd){
@@ -474,9 +560,7 @@
 			modules = [];
 		}
 
-		if(xhrObj && modules){
-			include();
-		}
+		runInclude();
 	}
 
 	function findLoadCandidate(elem){
@@ -491,7 +575,7 @@
 	}
 
 	function beforeUnveil(e){
-		if(e.defaultPrevented || !e.target.getAttribute('data-include')){return;}
+		if(e.detail.instance != lazySizes || e.defaultPrevented || !e.target.getAttribute('data-include')){return;}
 		queue.q(e.target);
 		e.detail.firesLoad = true;
 	}
@@ -501,4 +585,4 @@
 	addEventListener('resize', refreshIncludes, false);
 	addEventListener('lazyrefreshincludes', refreshIncludes, false);
 
-})(window, document);
+}));

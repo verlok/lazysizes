@@ -1,24 +1,45 @@
-(function(window, document){
-	'use strict';
-	if(!window.addEventListener){return;}
+(function(window, factory) {
+	if(!window) {return;}
+	var globalInstall = function(){
+		factory(window.lazySizes);
+		window.removeEventListener('lazyunveilread', globalInstall, true);
+	};
 
-	var rAF = window.requestAnimationFrame || setTimeout;
+	factory = factory.bind(null, window, window.document);
+
+	if(typeof module == 'object' && module.exports){
+		factory(require('lazysizes'));
+	} else if (typeof define == 'function' && define.amd) {
+		define(['lazysizes'], factory);
+	} else if(window.lazySizes) {
+		globalInstall();
+	} else {
+		window.addEventListener('lazyunveilread', globalInstall, true);
+	}
+}(typeof window != 'undefined' ?
+	window : 0, function(window, document, lazySizes) {
+	'use strict';
 
 	var addObserver = function(){
 		var connect, disconnect, observer, connected;
-		var lazySizes = window.lazySizes;
 		var lsCfg = lazySizes.cfg;
 		var attributes = {'data-bgset': 1, 'data-include': 1, 'data-poster': 1, 'data-bg': 1, 'data-script': 1};
 		var regClassTest = '(\\s|^)(' + lsCfg.loadedClass;
 		var docElem = document.documentElement;
 
 		var setClass = function(target){
-			rAF(function(){
+			lazySizes.rAF(function(){
 				lazySizes.rC(target, lsCfg.loadedClass);
 				if(lsCfg.unloadedClass){
 					lazySizes.rC(target, lsCfg.unloadedClass);
 				}
 				lazySizes.aC(target, lsCfg.lazyClass);
+
+				if(target.style.display == 'none' || (target.parentNode && target.parentNode.style.display == 'none')){
+					setTimeout(function () {
+						lazySizes.loader.unveil(target);
+					}, 0);
+				}
 			});
 		};
 
@@ -106,4 +127,4 @@
 
 
 	addEventListener('lazybeforeunveil', addObserver);
-})(window, document);
+}));

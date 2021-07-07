@@ -1,21 +1,23 @@
-/*
- This lazySizes extension helps to use responsive images, but to opt-out from too high retina support in case the w descriptor is used (for x descriptor this is not needed!),
- - data-sizes="auto" has to be used in conjunction
+(function(window, factory) {
+	if(!window) {return;}
+	var globalInstall = function(){
+		factory(window.lazySizes);
+		window.removeEventListener('lazyunveilread', globalInstall, true);
+	};
 
- <img src="100.jpg"
- 	data-optimumx="1.8"
- 	data-sizes="auto"
- 	data-srcset="100.jpg 100w,
- 	300.jpg 300w,
- 	600.jpg 600w,
- 	900.jpg 900w,
- 	1200.jpg 1200w"
- 	/>
+	factory = factory.bind(null, window, window.document);
 
- 	see a live demo here: http://afarkas.github.io/lazysizes/maxdpr/
- */
-
-(function(window, document, undefined){
+	if(typeof module == 'object' && module.exports){
+		factory(require('lazysizes'));
+	} else if (typeof define == 'function' && define.amd) {
+		define(['lazysizes'], factory);
+	} else if(window.lazySizes) {
+		globalInstall();
+	} else {
+		window.addEventListener('lazyunveilread', globalInstall, true);
+	}
+}(typeof window != 'undefined' ?
+	window : 0, function(window, document, lazySizes) {
 	/*jshint eqnull:true */
 	'use strict';
 	if(!window.addEventListener){return;}
@@ -192,7 +194,7 @@
 	};
 
 	var extentLazySizes = function(){
-		if(window.lazySizes && !window.lazySizes.getOptimumX){
+		if(lazySizes && !lazySizes.getOptimumX){
 			lazySizes.getX = getOptimumX;
 			lazySizes.pWS = parseWsrcset;
 			docElem.removeEventListener('lazybeforeunveil', extentLazySizes);
@@ -202,12 +204,7 @@
 	docElem.addEventListener('lazybeforeunveil', extentLazySizes);
 	setTimeout(extentLazySizes);
 
-	config = (window.lazySizes && lazySizes.cfg) || window.lazySizesConfig;
-
-	if(!config){
-		config = {};
-		window.lazySizesConfig = config;
-	}
+	config = lazySizes && lazySizes.cfg;
 
 	if(typeof config.getOptimumX != 'function'){
 		config.getOptimumX = function(/*element*/){
@@ -226,6 +223,8 @@
 	if(!window.devicePixelRatio){return;}
 
 	addEventListener('lazybeforesizes', function(e){
+		if(e.detail.instance != lazySizes){return;}
+
 		var optimumx, lazyData, width, attr;
 
 		var elem = e.target;
@@ -253,4 +252,4 @@
 		}
 	});
 
-})(window, document);
+}));

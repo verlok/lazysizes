@@ -1,4 +1,21 @@
-(function(window, document){
+(function(window, factory) {
+	var globalInstall = function(){
+		factory(window.lazySizes);
+		window.removeEventListener('lazyunveilread', globalInstall, true);
+	};
+
+	factory = factory.bind(null, window, window.document);
+
+	if(typeof module == 'object' && module.exports){
+		factory(require('lazysizes'));
+	} else if (typeof define == 'function' && define.amd) {
+		define(['lazysizes'], factory);
+	} else if(window.lazySizes) {
+		globalInstall();
+	} else {
+		window.addEventListener('lazyunveilread', globalInstall, true);
+	}
+}(window, function(window, document, lazySizes) {
 	'use strict';
 
 	if(!window.addEventListener){return;}
@@ -24,25 +41,9 @@
 		return matchesMedia(media);
 	};
 
-	var addClass = function(elem, className){
-		if($){
-			$(elem).addClass(className);
-		} else if(window.lazySizes){
-			lazySizes.aC(elem, className);
-		} else {
-			elem.classList.add(className);
-		}
-	};
-
-	var removeClass = function(elem, className){
-		if($){
-			$(elem).removeClass(className);
-		} else if(window.lazySizes){
-			lazySizes.rC(elem, className);
-		} else {
-			elem.classList.remove(className);
-		}
-	};
+	var addClass = lazySizes.aC;
+	var removeClass = lazySizes.rC;
+	var lazySizesConfig = lazySizes.cfg;
 
 	function AspectRatio(){
 		this.ratioElems = document.getElementsByClassName('lazyaspectratio');
@@ -117,7 +118,7 @@
 				for(i = 0, len = sources.length; i < len; i++){
 					customMedia = sources[i].getAttribute('data-media') || sources[i].getAttribute('media');
 
-					if(window.lazySizesConfig && lazySizesConfig.customMedia[customMedia]){
+					if(lazySizesConfig.customMedia[customMedia]){
 						customMedia = lazySizesConfig.customMedia[customMedia];
 					}
 
@@ -134,12 +135,13 @@
 			var regRatio = /^\s*([+\d\.]+)(\s*[\/x]\s*([+\d\.]+))?\s*$/;
 			var ratioCache = {};
 			return function(ratio){
+				var match;
 
-				if(!ratioCache[ratio] && ratio.match(regRatio)){
-					if(RegExp.$3){
-						ratioCache[ratio] = RegExp.$1 / RegExp.$3;
+				if(!ratioCache[ratio] && (match = ratio.match(regRatio))){
+					if(match[3]){
+						ratioCache[ratio] = match[1] / match[3];
 					} else {
-						ratioCache[ratio] = RegExp.$1 * 1;
+						ratioCache[ratio] = match[1] * 1;
 					}
 				}
 
@@ -206,4 +208,4 @@
 		define(imageRatio);
 	}
 
-})(window, document);
+}));

@@ -1,10 +1,26 @@
-(function(window, document, undefined){
+(function(window, factory) {
+	var globalInstall = function(){
+		factory(window.lazySizes);
+		window.removeEventListener('lazyunveilread', globalInstall, true);
+	};
+
+	factory = factory.bind(null, window, window.document);
+
+	if(typeof module == 'object' && module.exports){
+		factory(require('lazysizes'));
+	} else if (typeof define == 'function' && define.amd) {
+		define(['lazysizes'], factory);
+	} else if(window.lazySizes) {
+		globalInstall();
+	} else {
+		window.addEventListener('lazyunveilread', globalInstall, true);
+	}
+}(window, function(window, document, lazySizes) {
 	/*jshint eqnull:true */
 	'use strict';
 
-	if(!document.addEventListener){return;}
-
 	var config, riasCfg;
+	var lazySizesCfg = lazySizes.cfg;
 	var replaceTypes = {string: 1, number: 1};
 	var regNumber = /^\-*\+*\d+\.*\d*$/;
 	var regPicture = /^picture$/i;
@@ -28,15 +44,12 @@
 			absUrl: false,
 			modifyOptions: noop,
 			widthmap: {},
-			ratio: false
+			ratio: false,
+			traditionalRatio: false,
+			aspectratio: false,
 		};
 
-		config = (window.lazySizes && lazySizes.cfg) || window.lazySizesConfig;
-
-		if(!config){
-			config = {};
-			window.lazySizesConfig = config;
-		}
+		config = lazySizes && lazySizes.cfg;
 
 		if(!config.supportsType){
 			config.supportsType = function(type/*, elem*/){
@@ -72,15 +85,25 @@
 		}
 	})();
 
-	function getElementOptions(elem, src){
-		var attr, parent, setOption, options;
+	function getElementOptions(elem, src, options){
+		var attr, parent, setOption, prop, opts;
 		var elemStyles = window.getComputedStyle(elem);
 
+		if (!options) {
+			parent = elem.parentNode;
 
-		parent = elem.parentNode;
-		options = {
-			isPicture: !!(parent && regPicture.test(parent.nodeName || ''))
-		};
+			options = {
+				isPicture: !!(parent && regPicture.test(parent.nodeName || ''))
+			};
+		} else {
+			opts = {};
+
+			for (prop in options) {
+				opts[prop] = options[prop];
+			}
+
+			options = opts;
+		}
 
 		setOption = function(attr, run){
 			var attrVal = elem.getAttribute('data-'+ attr);
@@ -111,7 +134,7 @@
 					} catch(e){}
 				}
 				options[attr] = attrVal;
-			} else if((attr in riasCfg) && typeof riasCfg[attr] != 'function'){
+			} else if((attr in riasCfg) && typeof riasCfg[attr] != 'function' && !options[attr]){
 				options[attr] = riasCfg[attr];
 			} else if(run && typeof riasCfg[attr] == 'function'){
 				options[attr] = riasCfg[attr](elem, attrVal);
@@ -146,9 +169,15 @@
 
 		options.widths.forEach(function(width){
 			var widthAlias = options.widthmap[width] || width;
+			var ratio = options.aspectratio || options.ratio;
+			var traditionalRatio = !options.aspectratio && riasCfg.traditionalRatio;
 			var candidate = {
 				u: url.replace(regWidth, widthAlias)
-						.replace(regHeight, options.ratio ? Math.round(width * options.ratio) : ''),
+						.replace(regHeight, ratio ?
+							traditionalRatio ?
+								Math.round(width * ratio) :
+								Math.round(width / ratio)
+							: ''),
 				w: width
 			};
 
@@ -176,7 +205,7 @@
 				elemH = sizeElement.scrollHeight;
 			}
 			if (elemW && elemH) {
-				opts.ratio = elemH / elemW;
+				opts.ratio = opts.traditionalRatio ? elemH / elemW : elemW / elemH;
 			}
 		}
 
@@ -210,7 +239,9 @@
 	}
 
 	addEventListener('lazybeforesizes', function(e){
-		var elem, src, elemOpts, parent, sources, i, len, sourceSrc, sizes, detail, hasPlaceholder, modified, emptyList;
+		if(e.detail.instance != lazySizes){return;}
+
+		var elem, src, elemOpts, sourceOpts, parent, sources, i, len, sourceSrc, sizes, detail, hasPlaceholder, modified, emptyList;
 		elem = e.target;
 
 		if(!e.detail.dataAttr || e.defaultPrevented || riasCfg.disabled || !((sizes = elem.getAttribute(config.sizesAttr) || elem.getAttribute('sizes')) && regAllowedSizes.test(sizes))){return;}
@@ -225,7 +256,8 @@
 			sources = parent.getElementsByTagName('source');
 			for(i = 0, len = sources.length; i < len; i++){
 				if ( hasPlaceholder || regWidth.test(sourceSrc = getSrc(sources[i])) ){
-					setSrc(sourceSrc, elemOpts, sources[i]);
+					sourceOpts = getElementOptions(sources[i], sourceSrc, elemOpts);
+					setSrc(sourceSrc, sourceOpts, sources[i]);
 					modified = true;
 				}
 			}
@@ -337,10 +369,12 @@
 		};
 
 		var polyfill = function(e){
+			if(e.detail.instance != lazySizes){return;}
+
 			var candidate;
 			var elem = e.target;
 
-			if(!buggySizes && (window.respimage || window.picturefill || lazySizesConfig.pf)){
+			if(!buggySizes && (window.respimage || window.picturefill || lazySizesCfg.pf)){
 				document.removeEventListener('lazybeforesizes', polyfill);
 				return;
 			}
@@ -371,4 +405,4 @@
 
 	})();
 
-})(window, document);
+}));

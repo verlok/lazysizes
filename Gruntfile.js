@@ -49,13 +49,6 @@
 					src: [ "lazysizes.js", "plugins/**/*.js", "!*.min.js", "!plugins/**/*.min.js" ] //, "Gruntfile.js", "tests/*.js"
 				}
 			},
-			plato: {
-				all: {
-					files: {
-						"plato-report/": ["lazysizes.js", "plugins/**/*.js", "!*.min.js", "!plugins/**/*.min.js"]
-					}
-				}
-			},
 			qunit: {
 				all: ['tests/*.html']
 			},
@@ -83,7 +76,7 @@
 				},
 				minified: {
 					options: {
-						maxBytes: (1024 * 6.5)
+						maxBytes: (1024 * 7.8)
 					},
 					src: ["lazysizes.min.js"]
 				}
@@ -97,7 +90,6 @@
 		grunt.loadNpmTasks('grunt-uncss');
 		grunt.loadNpmTasks('grunt-bytesize');
 		grunt.loadNpmTasks('grunt-max-filesize');
-		grunt.loadNpmTasks('grunt-plato');
 		grunt.loadNpmTasks('grunt-contrib-qunit');
 
 		grunt.registerTask('wrapcore', 'wraps lazysizes into umd and common wrapper.', function() {
@@ -107,6 +99,14 @@
 
 			grunt.file.write('lazysizes.js', common.replace('{{ls}}', ls));
 			grunt.file.write('lazysizes-umd.js', umd.replace('{{ls}}', ls));
+		});
+
+		grunt.registerTask('importTs', 'import global typescript.', function() {
+			const fileName = './lazysizes.d.ts';
+			const importStr =  `import './types/global';\n\n`;
+			const tsContent = grunt.file.read(fileName);
+
+			grunt.file.write(fileName, importStr + tsContent);
 		});
 
 
